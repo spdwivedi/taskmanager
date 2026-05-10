@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API = axios.create({
   // Vite uses import.meta.env for environment variables
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api', 
+  baseURL: 'https://taskmanager-production-18e6.up.railway.app/api', 
 });
 
 API.interceptors.request.use(
