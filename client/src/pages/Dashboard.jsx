@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import API from '../api/axios';
-import { PlusCircle, FolderKanban, ArrowRight, X, BarChart2, Activity, CheckCircle, AlertCircle, Edit2, Trash2 } from 'lucide-react';
+import { PlusCircle, FolderKanban, ArrowRight, X, BarChart2, Activity, CheckCircle, AlertCircle, Edit2, Trash2, Clock } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const Dashboard = () => {
@@ -57,20 +57,27 @@ const Dashboard = () => {
     if (window.confirm(`Are you sure you want to delete "${name}"? This will delete all its tasks too.`)) {
       try {
         await API.delete(`/projects/${id}`);
-        setProjects(projects.filter(p => p._id !== id)); // Optimistic UI
+        setProjects(projects.filter(p => p._id !== id)); 
       } catch (error) { alert("Error deleting project"); }
     }
   };
 
-  // Open Edit Modal
   const openEditModal = (project) => {
     setCurrentProject(project);
     setIsEditing(true);
     setShowModal(true);
   };
 
+  // --- ANALYTICS CALCULATIONS ---
   const completedTasks = tasks.filter(t => t.status === 'Completed').length;
   const blockedTasks = tasks.filter(t => t.status === 'Blocked').length;
+  
+  // NEW: Calculate Overdue Tasks (Not completed + Due date is in the past)
+  const overdueTasks = tasks.filter(t => {
+    if (t.status === 'Completed') return false;
+    return new Date(t.dueDate).getTime() < new Date().getTime();
+  }).length;
+
   const completionRate = tasks.length ? Math.round((completedTasks / tasks.length) * 100) : 0;
   
   const chartData = Object.keys(COLORS).map(status => ({
@@ -96,12 +103,18 @@ const Dashboard = () => {
         <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>
       ) : (
         <>
-          {/* Top KPI Metric Cards (Unchanged) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          {/* Top KPI Metric Cards (Now 5 Columns!) */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
             <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl flex items-center justify-between"><div><p className="text-gray-400 text-sm">Total Projects</p><p className="text-2xl font-bold text-white">{projects.length}</p></div><div className="p-3 bg-blue-500/10 rounded-lg text-blue-500"><FolderKanban size={24}/></div></div>
             <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl flex items-center justify-between"><div><p className="text-gray-400 text-sm">Total Tasks</p><p className="text-2xl font-bold text-white">{tasks.length}</p></div><div className="p-3 bg-purple-500/10 rounded-lg text-purple-500"><BarChart2 size={24}/></div></div>
             <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl flex items-center justify-between"><div><p className="text-gray-400 text-sm">Completion Rate</p><p className="text-2xl font-bold text-green-400">{completionRate}%</p></div><div className="p-3 bg-green-500/10 rounded-lg text-green-500"><CheckCircle size={24}/></div></div>
             <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl flex items-center justify-between"><div><p className="text-gray-400 text-sm">Active Issues</p><p className="text-2xl font-bold text-red-400">{blockedTasks}</p></div><div className="p-3 bg-red-500/10 rounded-lg text-red-500"><AlertCircle size={24}/></div></div>
+            
+            {/* NEW: Overdue Tasks Card */}
+            <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl flex items-center justify-between">
+              <div><p className="text-gray-400 text-sm">Overdue Tasks</p><p className="text-2xl font-bold text-orange-400">{overdueTasks}</p></div>
+              <div className="p-3 bg-orange-500/10 rounded-lg text-orange-500"><Clock size={24}/></div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
