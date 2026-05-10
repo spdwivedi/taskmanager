@@ -28,13 +28,16 @@ const ProjectTasks = () => {
   const [remarkText, setRemarkText] = useState('');
   const [isIssue, setIsIssue] = useState(false);
 
-  // Fetch Data
+// Fetch Data
   const fetchData = async () => {
     try {
       const [projRes, taskRes] = await Promise.all([API.get('/projects'), API.get(`/tasks/project/${projectId}`)]);
       setProject(projRes.data.data.find(p => p._id === projectId));
       setTasks(taskRes.data.data);
-      if (selectedTask) setSelectedTask(taskRes.data.data.find(t => t._id === selectedTask._id)); // Refresh open modal
+      
+      // FIX 1: Use React's 'prev' state arrow function. 
+      // This guarantees it checks if the panel is ACTUALLY open right now, preventing the ghost reopening.
+      setSelectedTask(prev => prev ? taskRes.data.data.find(t => t._id === prev._id) : null);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
@@ -42,8 +45,14 @@ const ProjectTasks = () => {
     fetchData();
     socket.on('taskCreated', fetchData);
     socket.on('taskUpdated', fetchData);
-    return () => { socket.off('taskCreated'); socket.off('taskUpdated'); };
-  }, [projectId, selectedTask]);
+    
+    return () => { 
+      // FIX 2: We must pass 'fetchData' here. Otherwise, when you leave the page, 
+      // it accidentally deletes the global notification listeners in App.jsx too!
+      socket.off('taskCreated', fetchData); 
+      socket.off('taskUpdated', fetchData); 
+    };
+  }, [projectId]); // FIX 3: Removed selectedTask from this array. Opening a menu shouldn't trigger APIs!
 
   // Create Task
   const handleCreateTask = async (e) => {
@@ -56,23 +65,53 @@ const ProjectTasks = () => {
     } catch (err) { alert("Error: " + err.response?.data?.message); }
   };
 
-  // Add Remark
+  // ⚡ OPTIMISTIC: Add Remark
   const handleAddRemark = async (e) => {
     e.preventDefault();
+    const currentText = remarkText;
+    const currentIsIssue = isIssue;
+    
+    // 1. Clear the input box instantly so it feels fast
+    setRemarkText('');
+    setIsIssue(false);
+
+    // 2. Instantly draw the new remark on the screen BEFORE the database replies
+    const optimisticRemark = {
+      text: currentText,
+      isIssue: currentIsIssue,
+      addedBy: { name: user.name || 'You' },
+      createdAt: new Date().toISOString()
+    };
+    
+    setSelectedTask(prev => {
+      const newStatus = currentIsIssue ? 'Blocked' : (user?.role === 'Member' && prev.status !== 'Completed' ? 'Needs Review' : prev.status);
+      return { ...prev, remarks: [...prev.remarks, optimisticRemark], status: newStatus };
+    });
+
+    // 3. Silently save it to the database in the background
     try {
-      await API.post(`/tasks/${selectedTask._id}/remarks`, { text: remarkText, isIssue });
-      setRemarkText('');
-      setIsIssue(false);
-    } catch (err) { alert("Error: " + err.response?.data?.message); }
+      await API.post(`/tasks/${selectedTask._id}/remarks`, { text: currentText, isIssue: currentIsIssue });
+    } catch (err) { 
+      alert("Error saving remark."); 
+      fetchData(); // If the save fails, refresh the page to fix the UI
+    }
   };
 
-  // Update Status
+  // ⚡ OPTIMISTIC: Update Status
   const handleStatusUpdate = async (status) => {
+    // 1. Instantly change the colors and columns on the screen
+    setSelectedTask(prev => ({ ...prev, status }));
+    setTasks(prevTasks => prevTasks.map(t => t._id === selectedTask._id ? { ...t, status } : t));
+
+    // 2. Silently save it to the backend
     try {
       await API.put(`/tasks/${selectedTask._id}/status`, { status });
-    } catch (err) { alert("Error: " + err.response?.data?.message); }
+    } catch (err) { 
+      alert("Error updating status.");
+      fetchData(); // Revert if it fails
+    }
   };
-
+  
   // Filter Tasks
   const filteredTasks = tasks.filter(t => filterTag ? t.tags.includes(filterTag.trim()) || t.title.toLowerCase().includes(filterTag.toLowerCase()) : true);
 

@@ -9,7 +9,7 @@ import Dashboard from './pages/Dashboard';
 import ProjectTasks from './pages/ProjectTasks';
 
 // Init Global Socket
-const socketUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:5000';
+const socketUrl = 'https://taskmanager-production-18e6.up.railway.app';
 export const socket = io(socketUrl);
 
 // Auth Guard
@@ -41,9 +41,9 @@ const Layout = ({ children }) => {
     socket.on('taskCreated', fetchActivities);
     socket.on('taskUpdated', fetchActivities);
 
-    return () => {
-      socket.off('taskCreated');
-      socket.off('taskUpdated');
+return () => {
+      socket.off('taskCreated', fetchActivities);
+      socket.off('taskUpdated', fetchActivities);
     };
   }, []);
 
