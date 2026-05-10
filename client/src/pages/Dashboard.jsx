@@ -22,23 +22,31 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const projRes = await API.get('/projects');
-        setProjects(projRes.data.data);
+        // 1. Fetch Projects and Activities at the exact same time (Parallel)
+        const [projRes, actRes] = await Promise.all([
+          API.get('/projects'),
+          API.get('/activities')
+        ]);
         
-        // Fetch all tasks for analytics (in a real app, you'd have a specific analytics route)
-        // For now, we fetch tasks per project to build the chart
-        const allTasks = [];
-        for (const p of projRes.data.data) {
-           const tRes = await API.get(`/tasks/project/${p._id}`);
-           allTasks.push(...tRes.data.data);
-        }
+        const fetchedProjects = projRes.data.data;
+        setProjects(fetchedProjects);
+        setActivities(actRes.data.data.slice(0, 5));
+
+        // 2. Fetch ALL tasks for ALL projects at the exact same time (Parallel)
+        const taskPromises = fetchedProjects.map(p => API.get(`/tasks/project/${p._id}`));
+        const taskResponses = await Promise.all(taskPromises);
+        
+        // Combine all the task arrays into one giant array for the charts
+        const allTasks = taskResponses.flatMap(res => res.data.data);
         setTasks(allTasks);
 
-        const actRes = await API.get('/activities');
-        setActivities(actRes.data.data.slice(0, 5)); // Just top 5 for dashboard
-
-      } catch (error) { console.error(error); } finally { setLoading(false); }
+      } catch (error) { 
+        console.error(error); 
+      } finally { 
+        setLoading(false); 
+      }
     };
+    
     fetchDashboardData();
   }, []);
 
