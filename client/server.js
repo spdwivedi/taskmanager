@@ -11,8 +11,8 @@ const PORT = process.env.PORT || 3000;
 // Serve the compiled Vite files from the 'dist' folder
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Catch-all route to handle React Router (Express 5 Safe)
-app.get('/(.*)', (req, res) => {
+// The Ultimate Catch-All: Bypasses Express 5's broken regex engine entirely
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
