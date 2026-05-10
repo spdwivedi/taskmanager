@@ -1,40 +1,27 @@
-// server/models/Task.js
 const mongoose = require('mongoose');
 
+// Task remarks
+const RemarkSchema = new mongoose.Schema({
+  text: { type: String, required: true },
+  addedBy: { type: mongoose.Schema.ObjectId, ref: 'User', required: true },
+  isIssue: { type: Boolean, default: false },
+}, { timestamps: true });
+
+// Main schema
 const TaskSchema = new mongoose.Schema(
   {
-    title: {
-      type: String,
-      required: [true, 'Please add a task title'],
-      trim: true,
-      maxlength: [100, 'Title cannot be more than 100 characters'],
-    },
-    description: {
-      type: String,
-      required: [true, 'Please add a description'],
-      maxlength: [500, 'Description cannot be more than 500 characters'],
-    },
+    title: { type: String, required: true, trim: true, maxlength: 100 },
+    description: { type: String, required: true, maxlength: 500 },
     status: {
       type: String,
-      enum: ['Pending', 'In Progress', 'Completed'],
+      enum: ['Pending', 'In Progress', 'Needs Review', 'Completed', 'Blocked'],
       default: 'Pending',
     },
-    dueDate: {
-      type: Date,
-      required: [true, 'Please add a due date'],
-    },
-    projectId: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'Project',
-      required: [true, 'Task must belong to a project'],
-      index: true, // Speeds up queries when loading a specific project's dashboard
-    },
-    assignedTo: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'User',
-      required: [true, 'Task must be assigned to a user'],
-      index: true, 
-    },
+    dueDate: { type: Date, required: true },
+    projectId: { type: mongoose.Schema.ObjectId, ref: 'Project', required: true, index: true },
+    assignedTo: { type: mongoose.Schema.ObjectId, ref: 'User', required: true, index: true },
+    tags: [{ type: String, trim: true }], // Filtering tags
+    remarks: [RemarkSchema], // User/Admin updates
   },
   { timestamps: true }
 );
