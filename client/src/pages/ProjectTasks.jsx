@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import API from '../api/axios';
 import { socket } from '../App';
-import { ArrowLeft, Plus, Clock, MessageSquare, AlertTriangle, X, Filter } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, MessageSquare, AlertTriangle, X, Filter, Edit2, Trash2 } from 'lucide-react';
 
+// Setup Constants
 const COLUMNS = ['Pending', 'In Progress', 'Needs Review', 'Blocked', 'Completed'];
 const STATUS_COLORS = { 'Pending': 'bg-gray-500', 'In Progress': 'bg-blue-500', 'Needs Review': 'bg-yellow-500', 'Blocked': 'bg-red-500', 'Completed': 'bg-green-500' };
 
@@ -13,46 +14,44 @@ const ProjectTasks = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // State
+  // Core State
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Modals & Filters
+  // UI State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null); // Opens Detail Modal
+  const [showEditModal, setShowEditModal] = useState(false); // New Edit Modal
+  const [selectedTask, setSelectedTask] = useState(null);
   const [filterTag, setFilterTag] = useState('');
   
-  // Forms
+  // Form State
   const [newTask, setNewTask] = useState({ title: '', description: '', dueDate: '', tags: '' });
+  const [editTaskData, setEditTaskData] = useState({ title: '', description: '', dueDate: '', tags: '' }); // Edit Form
   const [remarkText, setRemarkText] = useState('');
   const [isIssue, setIsIssue] = useState(false);
 
-// Fetch Data
+  // Fetch Board
   const fetchData = async () => {
     try {
       const [projRes, taskRes] = await Promise.all([API.get('/projects'), API.get(`/tasks/project/${projectId}`)]);
       setProject(projRes.data.data.find(p => p._id === projectId));
       setTasks(taskRes.data.data);
-      
-      // FIX 1: Use React's 'prev' state arrow function. 
-      // This guarantees it checks if the panel is ACTUALLY open right now, preventing the ghost reopening.
       setSelectedTask(prev => prev ? taskRes.data.data.find(t => t._id === prev._id) : null);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
+  // Socket Listeners
   useEffect(() => {
     fetchData();
     socket.on('taskCreated', fetchData);
     socket.on('taskUpdated', fetchData);
     
     return () => { 
-      // FIX 2: We must pass 'fetchData' here. Otherwise, when you leave the page, 
-      // it accidentally deletes the global notification listeners in App.jsx too!
       socket.off('taskCreated', fetchData); 
       socket.off('taskUpdated', fetchData); 
     };
-  }, [projectId]); // FIX 3: Removed selectedTask from this array. Opening a menu shouldn't trigger APIs!
+  }, [projectId]);
 
   // Create Task
   const handleCreateTask = async (e) => {
@@ -65,50 +64,73 @@ const ProjectTasks = () => {
     } catch (err) { alert("Error: " + err.response?.data?.message); }
   };
 
-  // ⚡ OPTIMISTIC: Add Remark
+  // Open Edit
+  const openEditModal = () => {
+    setEditTaskData({
+      title: selectedTask.title,
+      description: selectedTask.description,
+      dueDate: new Date(selectedTask.dueDate).toISOString().split('T')[0], // Format Date
+      tags: selectedTask.tags.join(', ') // Format Tags
+    });
+    setShowEditModal(true);
+  };
+
+  // Save Edit
+  const handleEditTask = async (e) => {
+    e.preventDefault();
+    try {
+      const tagsArray = editTaskData.tags.split(',').map(t => t.trim()).filter(t => t);
+      await API.put(`/tasks/${selectedTask._id}`, { ...editTaskData, tags: tagsArray });
+      setShowEditModal(false);
+      fetchData(); // Refresh to get populated data
+    } catch (err) { alert("Error editing task."); }
+  };
+
+  // Add Remark
   const handleAddRemark = async (e) => {
     e.preventDefault();
     const currentText = remarkText;
     const currentIsIssue = isIssue;
     
-    // 1. Clear the input box instantly so it feels fast
     setRemarkText('');
     setIsIssue(false);
 
-    // 2. Instantly draw the new remark on the screen BEFORE the database replies
-    const optimisticRemark = {
-      text: currentText,
-      isIssue: currentIsIssue,
-      addedBy: { name: user.name || 'You' },
-      createdAt: new Date().toISOString()
-    };
+    const optimisticRemark = { text: currentText, isIssue: currentIsIssue, addedBy: { name: user.name || 'You' }, createdAt: new Date().toISOString() };
     
     setSelectedTask(prev => {
       const newStatus = currentIsIssue ? 'Blocked' : (user?.role === 'Member' && prev.status !== 'Completed' ? 'Needs Review' : prev.status);
       return { ...prev, remarks: [...prev.remarks, optimisticRemark], status: newStatus };
     });
 
-    // 3. Silently save it to the database in the background
     try {
       await API.post(`/tasks/${selectedTask._id}/remarks`, { text: currentText, isIssue: currentIsIssue });
     } catch (err) { 
       alert("Error saving remark."); 
-      fetchData(); // If the save fails, refresh the page to fix the UI
+      fetchData(); 
     }
   };
 
-  // ⚡ OPTIMISTIC: Update Status
+  // Update Status
   const handleStatusUpdate = async (status) => {
-    // 1. Instantly change the colors and columns on the screen
     setSelectedTask(prev => ({ ...prev, status }));
     setTasks(prevTasks => prevTasks.map(t => t._id === selectedTask._id ? { ...t, status } : t));
 
-    // 2. Silently save it to the backend
     try {
       await API.put(`/tasks/${selectedTask._id}/status`, { status });
     } catch (err) { 
       alert("Error updating status.");
-      fetchData(); // Revert if it fails
+      fetchData(); 
+    }
+  };
+
+  // Delete Task
+  const handleDeleteTask = async () => {
+    if (window.confirm(`Are you sure you want to delete "${selectedTask.title}"?`)) {
+      try {
+        await API.delete(`/tasks/${selectedTask._id}`);
+        setTasks(prev => prev.filter(t => t._id !== selectedTask._id));
+        setSelectedTask(null); 
+      } catch (err) { alert("Error deleting task."); }
     }
   };
   
@@ -119,7 +141,7 @@ const ProjectTasks = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col h-screen overflow-hidden">
-      {/* Header */}
+      {/* Top Header */}
       <div className="p-6 border-b border-gray-800 bg-gray-900 shrink-0">
         <button onClick={() => navigate('/')} className="flex items-center text-gray-400 hover:text-white mb-4 transition"><ArrowLeft size={16} className="mr-2" /> Dashboard</button>
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -141,7 +163,7 @@ const ProjectTasks = () => {
         </div>
       </div>
 
-      {/* Kanban Board */}
+      {/* Kanban Grid */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 flex gap-6 pb-12">
         {COLUMNS.map(col => {
           const colTasks = filteredTasks.filter(t => t.status === col);
@@ -173,20 +195,34 @@ const ProjectTasks = () => {
         })}
       </div>
 
-      {/* Task Detail Modal (The Hub) */}
+      {/* Task Modal */}
       {selectedTask && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl flex flex-col animate-slide-in">
             {/* Modal Header */}
             <div className="p-6 border-b border-gray-800 flex justify-between items-start bg-gray-900">
-              <div>
+              <div className="flex-1 pr-4">
                 <div className="flex items-center gap-3 mb-2">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[selectedTask.status]} bg-opacity-20 text-${STATUS_COLORS[selectedTask.status].replace('bg-', '')}`}>{selectedTask.status}</span>
                   {selectedTask.tags.map(tag => <span key={tag} className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded">{tag}</span>)}
                 </div>
                 <h2 className="text-2xl font-bold text-white">{selectedTask.title}</h2>
               </div>
-              <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-white"><X size={24} /></button>
+              
+              {/* Top Controls */}
+              <div className="flex items-center gap-3">
+                {user?.role === 'Admin' && (
+                  <>
+                    <button onClick={openEditModal} className="p-2 bg-gray-800 hover:bg-blue-600 text-gray-400 hover:text-white rounded-lg transition" title="Edit Task">
+                      <Edit2 size={18} />
+                    </button>
+                    <button onClick={handleDeleteTask} className="p-2 bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white rounded-lg transition" title="Delete Task">
+                      <Trash2 size={18} />
+                    </button>
+                  </>
+                )}
+                <button onClick={() => setSelectedTask(null)} className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition"><X size={20} /></button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -196,7 +232,7 @@ const ProjectTasks = () => {
                 <p className="text-gray-300 bg-gray-800/50 p-4 rounded-xl border border-gray-800">{selectedTask.description}</p>
               </div>
 
-              {/* Status Controls */}
+              {/* Status Buttons */}
               {(user?.role === 'Admin' || user?.id === selectedTask.assignedTo?._id) && (
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                   <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3">Update Status</h3>
@@ -210,7 +246,7 @@ const ProjectTasks = () => {
                 </div>
               )}
 
-              {/* Remarks Timeline */}
+              {/* Chat Timeline */}
               <div>
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Task Timeline & Remarks</h3>
                 <div className="space-y-4">
@@ -230,7 +266,7 @@ const ProjectTasks = () => {
               </div>
             </div>
 
-            {/* Add Remark Input */}
+            {/* Post Input */}
             <div className="p-6 border-t border-gray-800 bg-gray-900">
               <form onSubmit={handleAddRemark} className="space-y-4">
                 <textarea required rows="2" value={remarkText} onChange={(e) => setRemarkText(e.target.value)} placeholder="Add an update, remark, or report an issue..." className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl py-3 px-4 focus:outline-none focus:border-blue-500 resize-none" />
@@ -247,7 +283,7 @@ const ProjectTasks = () => {
         </div>
       )}
 
-      {/* Create Task Modal */}
+      {/* Add Task Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
           <div className="bg-gray-900 border border-gray-700 rounded-3xl w-full max-w-lg p-8 shadow-2xl">
@@ -269,6 +305,33 @@ const ProjectTasks = () => {
                 </div>
               </div>
               <button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg">Assign Task</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Task Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-gray-900 border border-gray-700 rounded-3xl w-full max-w-lg p-8 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Edit Task</h2>
+              <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-white"><X size={24} /></button>
+            </div>
+            <form onSubmit={handleEditTask} className="space-y-4">
+              <input type="text" required value={editTaskData.title} onChange={(e) => setEditTaskData({...editTaskData, title: e.target.value})} className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl py-3 px-4 focus:border-blue-500" placeholder="Task Title" />
+              <textarea required rows="3" value={editTaskData.description} onChange={(e) => setEditTaskData({...editTaskData, description: e.target.value})} className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl py-3 px-4 focus:border-blue-500 resize-none" placeholder="Description" />
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
+                  <input type="date" required value={editTaskData.dueDate} onChange={(e) => setEditTaskData({...editTaskData, dueDate: e.target.value})} className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl py-3 px-4 focus:border-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Tags (Comma separated)</label>
+                  <input type="text" value={editTaskData.tags} onChange={(e) => setEditTaskData({...editTaskData, tags: e.target.value})} className="w-full bg-gray-800 text-white border border-gray-700 rounded-xl py-3 px-4 focus:border-blue-500" placeholder="API, Design, Urgent" />
+                </div>
+              </div>
+              <button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg">Save Changes</button>
             </form>
           </div>
         </div>
