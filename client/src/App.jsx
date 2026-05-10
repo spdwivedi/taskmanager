@@ -104,9 +104,9 @@ return () => {
               <p><strong className="text-white">Tech Stack:</strong> MongoDB, Express, React, Node.js, Socket.io, Tailwind CSS, Vite.</p>
               <p><strong className="text-white">Features:</strong> Real-time WebSockets, Role-Based Access Control, Activity Logging, Kanban Routing.</p>
               <div className="pt-4 border-t border-gray-800 flex gap-4 mt-6">
-                <a href="#" target="_blank" className="text-blue-400 hover:text-blue-300">LinkedIn</a>
-                <a href="#" target="_blank" className="text-blue-400 hover:text-blue-300">GitHub</a>
-                <a href="#" target="_blank" className="text-blue-400 hover:text-blue-300">Portfolio</a>
+                <a href="https://www.linkedin.com/in/spdwivedi2001/" target="_blank" className="text-blue-400 hover:text-blue-300">LinkedIn</a>
+                <a href="https://github.com/spdwivedi/taskmanager" target="_blank" className="text-blue-400 hover:text-blue-300">GitHub</a>
+                <a href="https://spdwivedi.me/" target="_blank" className="text-blue-400 hover:text-blue-300">Portfolio</a>
               </div>
             </div>
           </div>
