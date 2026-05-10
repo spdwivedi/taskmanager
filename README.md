@@ -39,8 +39,7 @@ TaskFlow Pro is a full-stack, real-time project management platform built to han
 * JSON Web Tokens (JWT) for Authentication
 
 **Deployment:**
-* Vercel (Frontend Hosting)
-* Railway (Backend Hosting)
+* Railway (Frontend and Backend Hosting)
 
 ---
 
